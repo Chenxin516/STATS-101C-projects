@@ -1,0 +1,513 @@
+---
+title: "Project"
+author: "Chenxin Yang"
+date: "11/3/2020"
+output: html_document
+---
+```{r}
+library(ggplot2)
+library(car)
+library(corrplot)
+library(leaps)
+library(tidyverse)
+
+
+
+df <- read.csv("training.csv")
+pred <- read.csv("test.csv")
+df$class= cut(df$class, 3, labels=c('0', '1','2')) 
+#df$class1= cut(as.numeric(df$class), 3, labels=c('NG', 'OG','TSG')) 
+```
+
+
+```{r}
+library(mclust)
+library(MASS)
+library(caret) 
+
+trainIndex <- createDataPartition(df$class, p = 0.7, 
+                                  list = FALSE)
+df.train <- df[trainIndex,]
+df.test <- df[-trainIndex,]
+
+df0=df[which(df$class==0),]
+df1=df[which(df$class==1),]
+df2=df[which(df$class==2),]
+
+```
+
+```{r}
+head(df)
+```
+
+feature selection
+```{r}
+# ensure the results are repeatable
+set.seed(7)
+# load the library
+library(mlbench)
+library(caret)
+# load the data
+data(PimaIndiansDiabetes)
+# calculate correlation matrix
+correlationMatrix <- cor(df[,2:98])
+
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+
+
+```
+
+```{r}
+dfnew <- df[ -highlyCorrelated ]
+```
+
+```{r}
+dfnew
+```
+
+
+
+
+
+
+```{r}
+
+
+library(dplyr)
+require(foreign)
+require(nnet)
+require(ggplot2)
+require(reshape2)
+
+```
+
+
+
+
+```{r}
+mylogit<-multinom(class ~.+0, data = dfnew,family='binomial')
+```
+
+
+
+
+```{r}
+z<-summary(mylogit)$coefficients/summary(mylogit)$standard.errors
+p<-(1-pnorm(abs(z),0,1))*2
+
+
+```
+
+```{r}
+sum(p[1,]<0.05&p[2,]<0.05)
+```
+
+
+
+```{r}
+dffinal<-dfnew[(p[1,]<0.05& p[2,]<0.05)]
+```
+
+```{r}
+dffinal
+```
+
+
+```{r}
+
+dffinal$class=df$class
+
+```
+
+
+```{r}
+dffinal
+```
+
+
+
+
+
+```{r}
+trainIndex <- createDataPartition(df$class, p = 0.7, 
+                                  list = FALSE)
+df.train <- dffinal[trainIndex,]
+df.test <- dffinal[-trainIndex,]
+```
+
+
+
+
+multinormal
+
+
+```{r}
+
+multinom.fit <- multinom(class ~., 
+                data = df.train)
+
+
+```
+
+```{r}
+ptable<-multinom.fit$fitted.values
+
+```
+
+
+
+```{r}
+library(mlr)
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+
+
+```{r}
+pred_LR <- function(ptable){
+  i = 0
+  preds = list() # vector to hold predictions
+  for(row in 1:nrow(ptable)){
+    if(ptable[row,1] >= 0.9){ # if prob NG . 0.80, classify as NG
+      preds[row] = 0
+    }
+    else{
+      if(ptable[row,2] >= ptable[row,3]){ # classify OG if OG prob higher
+        preds[row] = 1
+      }
+      else{
+        preds[row] = 2
+      }
+    }
+  }
+  preds <- unlist(preds)
+  return(preds)
+}
+```
+
+
+```{r}
+preds<-pred_LR(multinom.fit$fitted.values)
+nrow(df.train)
+```
+
+
+
+```{r}
+predic<- predict(multinom.fit, df.test,'class')
+```
+
+```{r}
+num<-as.character(predic)
+num
+```
+
+
+```{r}
+library('mlr')
+head(getPredictionProbabilities(predic))
+```
+
+
+
+```{r}
+df.test$precticed <-predic
+
+df.test0=df.test[which(df.test$class==0),]
+df.test1=df.test[which(df.test$class==1),]
+df.test2=df.test[which(df.test$class==2),]
+score=0
+for (i in 1:nrow(df.test)){
+  if (df.test$precticed[i]==0 && df.test$precticed[i]==df.test$class[i]){
+    score = score+1
+    
+  }
+  if (df.test$precticed[i]==1 && df.test$precticed[i]==df.test$class[i]){
+    score = score+20
+    
+  }
+  if (df.test$precticed[i]==2 && df.test$precticed[i]==df.test$class[i]){
+    score = score+20
+    
+  }
+}
+print(score)
+
+percent=score/(nrow(df.test0)+nrow(df.test1)*20+nrow(df.test2)*20)
+print(percent)
+# Building classification table
+cm = as.matrix(table(Actual = df.test$class, Predicted = df.test$precticed)) 
+n = sum(cm) # number of instances
+ nc = nrow(cm) # number of classes
+ diag = diag(cm) # number of correctly classified instances per class 
+ rowsums = apply(cm, 1, sum) # number of instances per class
+ colsums = apply(cm, 2, sum) # number of predictions per class
+ p = rowsums / n # distribution of instances over the actual classes
+ q = colsums / n # distribution of instances over the predicted classes
+ print(cm)
+ round((sum(diag(cm))/sum(cm))*100,2)
+ precision = diag / colsums 
+ recall = diag / rowsums 
+ f1 = 2 * precision * recall / (precision + recall) 
+  data.frame(precision, recall, f1) 
+```
+
+
+
+
+```{r}
+Prediction_mlg<-predict(multinom.fit, newdata = pred, "class")
+
+
+
+
+pred$class=Prediction_mlg
+prediction=pred[c('id','class')]
+
+write.csv(prediction,'predmlg.csv',row.names = FALSE)
+
+```
+
+
+
+```{r}
+
+prediction=replace(prediction,prediction==1,0)
+prediction=replace(prediction,prediction==3,2)
+prediction=replace(prediction,prediction==2,1)
+write.csv(prediction,'predmlg.csv',row.names = FALSE)
+```
+
+
+
+
+```{r}
+prediction
+```
+
+
+
+
+
+```{r}
+library(tidyverse)
+
+names12=wt12 %>% rownames_to_column() %>% top_n(10, attr_importance) %>% pull(rowname)
+names01=wt01 %>% rownames_to_column() %>% top_n(10, attr_importance) %>% pull(rowname)
+names02=wt02 %>% rownames_to_column() %>% top_n(10, attr_importance) %>% pull(rowname)
+```
+
+```{r}
+as.factor(names)
+
+```
+
+```{r}
+df.train$class1 <- relevel(df.train$class, ref = '0' )
+multinom.fit <- multinom(class ~ H3K4me3_height + BioGRID_betweenness  + BioGRID_clossness+ BioGRID_log_degree+ intolerant_pNull + pLOF_Zscore + H3K79me2_width+ H3K79me2_height+ Broad_H4K20me1_percentage + H4K20me1_height,data = df.train)
+qda.fit <- qda(class ~ H3K4me3_height + BioGRID_betweenness  + BioGRID_clossness+ BioGRID_log_degree+ intolerant_pNull + pLOF_Zscore + H3K79me2_width+ H3K79me2_height+ Broad_H4K20me1_percentage + H4K20me1_height,data = df.train)
+qda.fit
+```
+
+
+
+
+
+multinormal
+
+```{r}
+
+
+library(dplyr)
+require(foreign)
+require(nnet)
+require(ggplot2)
+require(reshape2)
+
+```
+
+```{r}
+df.train$class1 <- relevel(df.train$class, ref = '0' )
+multinom.fit <- multinom(class ~ VEST_score + Missense_Entropy + BioGRID_log_degree + 
+              intolerant_pLI + pLOF_Zscore + N_Missense + 
+              Missense_Damaging_TO_Missense_Benign_Ratio + ncGERP +
+              # Missense_TO_Benign_Ratio + 
+              Missense_Damaging_TO_Benign_Ratio + N_LOF + BioGRID_clossness +
+              Gene_body_hypermethylation_in_cancer +
+              RVIS_percentile + BioGRID_betweenness + LOF_TO_Total_Ratio+
+              Broad_H4K20me1_percentage + ## Broad_H3K9ac_percentage +
+              Broad_H3K79me2_percentage + Broad_H3K4me2_percentage +
+              Broad_H3K36me3_percentage + Broad_H3K27ac_percentage +
+              Broad_H3K4me1_percentage + Broad_H3K4me3_percentage, 
+                data = df.train)
+
+
+```
+
+
+
+
+
+```{r}
+df.test0=df.test[which(df.test$class==0),]
+df.test1=df.test[which(df.test$class==1),]
+df.test2=df.test[which(df.test$class==2),]
+
+df.test$precticed <- predict(multinom.fit, df.test,'class')
+score=0
+for (i in 1:nrow(df.test)){
+  if (df.test$precticed[i]==0 && df.test$precticed[i]==df.test$class[i]){
+    score = score+1
+    
+  }
+  if (df.test$precticed[i]==1 && df.test$precticed[i]==df.test$class[i]){
+    score = score+20
+    
+  }
+  if (df.test$precticed[i]==2 && df.test$precticed[i]==df.test$class[i]){
+    score = score+20
+    
+  }
+}
+print(score)
+
+percent=score/(nrow(df.test0)+nrow(df.test1)*20+nrow(df.test2)*20)
+print(percent)
+# Building classification table
+cm = as.matrix(table(Actual = df.test$class, Predicted = df.test$precticed)) 
+n = sum(cm) # number of instances
+ nc = nrow(cm) # number of classes
+ diag = diag(cm) # number of correctly classified instances per class 
+ rowsums = apply(cm, 1, sum) # number of instances per class
+ colsums = apply(cm, 2, sum) # number of predictions per class
+ p = rowsums / n # distribution of instances over the actual classes
+ q = colsums / n # distribution of instances over the predicted classes
+ print(cm)
+ round((sum(diag(cm))/sum(cm))*100,2)
+ precision = diag / colsums 
+ recall = diag / rowsums 
+ f1 = 2 * precision * recall / (precision + recall) 
+  data.frame(precision, recall, f1) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+knn
+```{r}
+train_control <- trainControl(method="cv", number = 5, 
+                              classProbs = TRUE, 
+                              savePredictions = TRUE)
+
+KNNfit <- train(class1 ~ VEST_score + Missense_Entropy + BioGRID_log_degree + 
+              intolerant_pLI + pLOF_Zscore + N_Missense + 
+              Missense_Damaging_TO_Missense_Benign_Ratio + ncGERP +
+              # Missense_TO_Benign_Ratio + 
+              Missense_Damaging_TO_Benign_Ratio + N_LOF + BioGRID_clossness +
+              Gene_body_hypermethylation_in_cancer +
+              RVIS_percentile + BioGRID_betweenness + LOF_TO_Total_Ratio+
+              Broad_H4K20me1_percentage + ## Broad_H3K9ac_percentage +
+              Broad_H3K79me2_percentage + Broad_H3K4me2_percentage +
+              Broad_H3K36me3_percentage + Broad_H3K27ac_percentage +
+              Broad_H3K4me1_percentage + Broad_H3K4me3_percentage, 
+                data = df.train, method = 'knn',
+                ## Center and scale the predictors for the training
+                ## set and all future samples.
+                preProc = c("center", "scale"),
+                trControl = train_control,
+                tuneGrid = expand.grid(k = seq(1, 50, by = 5)))
+ggplot(KNNfit) + theme_bw()
+#k=11
+
+```
+
+```{r}
+
+KNNfit
+
+```
+```{r}
+Prediction_knn<-predict(KNNfit, newdata = pred, "class")
+
+```
+
+
+```{r}
+
+LDAfit <- train(class~VEST_score+Missense_Entropy+BioGRID_log_degree+intolerant_pLI+pLOF_Zscore+Broad_H4K20me1_percentage+Broad_H3K9ac_percentage+Broad_H3K79me2_percentage+H4K20me1_width+H3K79me2_height, 
+                data = df.train, method = "lda",
+               preProc = c("center", "scale"),
+               trControl = train_control)
+QDAfit <- train(class~VEST_score+Missense_Entropy+BioGRID_log_degree+intolerant_pLI+pLOF_Zscore+Broad_H4K20me1_percentage+Broad_H3K9ac_percentage+Broad_H3K79me2_percentage+H4K20me1_width+H3K79me2_height, 
+                data = df.train, method = "qda",
+               preProc = c("center", "scale"),
+               trControl = train_control)
+```
+
+
+```{r}
+LDAfit
+QDAfit
+```
+
+```{r}
+library(class)
+knntrain=df[c('VEST_score','Missense_Entropy','BioGRID_log_degree','intolerant_pLI','pLOF_Zscore','Broad_H4K20me1_percentage','Broad_H3K9ac_percentage','Broad_H3K79me2_percentage','H4K20me1_width','H3K79me2_height')]
+
+knnpred=pred[c('VEST_score','Missense_Entropy','BioGRID_log_degree','intolerant_pLI','pLOF_Zscore','Broad_H4K20me1_percentage','Broad_H3K9ac_percentage','Broad_H3K79me2_percentage','H4K20me1_width','H3K79me2_height')]
+Prediction_k11 <- knn(knntrain, knnpred,
+                            df$class, k=11, prob=TRUE)
+```
+
+
+
+```{r}
+Prediction_k11=as.numeric(Prediction_k11)
+Prediction_k11=replace(Prediction_k11,Prediction_k11==1,0)
+Prediction_k11=replace(Prediction_k11,Prediction_k11==3,2)
+Prediction_k11=replace(Prediction_k11,Prediction_k11==2,1)
+```
+
+```{r}
+length(Prediction_k11)
+```
+
+```{r}
+
+pred$class=Prediction_k11
+pred=pred[c('id','class')]
+```
+
+```{r}
+write.csv(pred,'predknn.csv',row.names = FALSE)
+
+```
